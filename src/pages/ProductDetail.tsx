@@ -8,58 +8,53 @@ import { Shield, Zap, Download, ArrowLeft, Check, ChevronLeft, ChevronRight } fr
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 
+const SELLHUB_API_KEY = "758af9bc-5e35-429f-8668-9b471f96cb57_dqm7gnpa1zxxuhn6j4zqgl473jdsrzkouebeq0gql2jwb387gomvre58yiujdwb4";
+
 const ProductDetail = () => {
   const { slug } = useParams();
   const navigate = useNavigate();
   const product = mockProducts.find((p) => p.slug === slug);
   const [selectedPricing, setSelectedPricing] = useState(0);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // Load SellHub payment script
-  useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://apisellhub.com/payment-embed.js";
-    script.async = true;
-    document.body.appendChild(script);
-
-    return () => {
-      document.body.removeChild(script);
-    };
-  }, []);
-
-  // Get SellHub product and variant mapping
   const getSellHubData = () => {
     const pricingOption = product?.pricing[selectedPricing]?.duration;
-    
-    if (product?.id === "3") { // Permanent Spoofer
+
+    if (product?.id === "3") {
       return {
-        product: "1",
-        variant: pricingOption === "One-time" ? "1" : "2"
+        productId: "65c8784d-3bde-4040-a2e9-4a75233ca9fd",
+        variantId: pricingOption === "One-time"
+          ? "d4bf4962-d633-4ebf-ba63-da3750a5c577"
+          : "e117729e-19dc-43df-bc83-15857e73d69e"
       };
-    } else if (product?.id === "1") { // Valorant Private
+    } else if (product?.id === "1") {
       const variantMap: Record<string, string> = {
-        "7 Days": "3",
-        "30 Days": "4",
-        "Lifetime": "5"
+        "7 Days": "0cb95b78-8080-41e5-aacd-6daab2b59c80",
+        "30 Days": "e280a6b0-b720-4107-a651-7e32bd617dd5",
+        "Lifetime": "4c8c7b3c-51b1-4bf0-bd0d-c0883594f1f8"
       };
       return {
-        product: "2",
-        variant: variantMap[pricingOption] || "3"
+        productId: "6215c574-5ff5-495e-9f9f-f1122b11bb3b",
+        variantId: variantMap[pricingOption] || "0cb95b78-8080-41e5-aacd-6daab2b59c80"
       };
-    } else if (product?.id === "2") { // Valorant Pro
+    } else if (product?.id === "2") {
       const variantMap: Record<string, string> = {
-        "3 Days": "6",
-        "7 Days": "7",
-        "30 Days": "8",
-        "Lifetime": "9"
+        "3 Days": "d6bdacfa-a847-4a8a-978c-0e50e3044331",
+        "7 Days": "700de951-ade9-4d16-be21-a7b3a677cd65",
+        "30 Days": "36eeaae7-c6c9-47ef-a1ce-4697ee670a57",
+        "Lifetime": "c79944ff-9208-4f2b-8b2b-f90114a2bc02"
       };
       return {
-        product: "3",
-        variant: variantMap[pricingOption] || "6"
+        productId: "9dcbac2e-4e41-47c7-bd91-805abe6bcd0d",
+        variantId: variantMap[pricingOption] || "d6bdacfa-a847-4a8a-978c-0e50e3044331"
       };
     }
-    
-    return { product: "1", variant: "1" };
+
+    return {
+      productId: "65c8784d-3bde-4040-a2e9-4a75233ca9fd",
+      variantId: "d4bf4962-d633-4ebf-ba63-da3750a5c577"
+    };
   };
 
   if (!product) {
@@ -79,13 +74,69 @@ const ProductDetail = () => {
     );
   }
 
-  const handlePurchase = () => {
-    toast.success("Redirecting to checkout...", {
-      description: `${product.title} - ${product.pricing[selectedPricing].duration}`,
-    });
-    setTimeout(() => {
-      navigate("/auth?checkout=true");
-    }, 1000);
+  const handlePurchase = async () => {
+    if (!product) return;
+
+    setIsProcessing(true);
+    const { productId, variantId } = getSellHubData();
+
+    try {
+      const email = prompt("Please enter your email address:");
+      if (!email) {
+        setIsProcessing(false);
+        return;
+      }
+
+      const response = await fetch("https://store.sellhub.cx/api/checkout", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${SELLHUB_API_KEY}`
+        },
+        body: JSON.stringify({
+          email: email,
+          currency: "usd",
+          returnUrl: window.location.origin + "/dashboard",
+          cartBundles: [],
+          methodName: "",
+          bundleIds: [],
+          customFieldValues: [],
+          cart: {
+            items: [
+              {
+                id: productId,
+                coupon: "",
+                name: "",
+                variant: {
+                  id: variantId,
+                  name: "",
+                  price: "0.00"
+                },
+                quantity: 1,
+                addons: []
+              }
+            ],
+            bundles: []
+          }
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.status === "success" && data.session) {
+        toast.success("Redirecting to checkout...");
+        window.location.href = `https://store.sellhub.cx/checkout/${data.session.id}`;
+      } else {
+        throw new Error("Failed to create checkout session");
+      }
+    } catch (error) {
+      console.error("Checkout error:", error);
+      toast.error("Failed to start checkout", {
+        description: "Please try again or contact support"
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const nextImage = () => {
@@ -228,15 +279,15 @@ const ProductDetail = () => {
 
               {/* Purchase CTA */}
               <div className="space-y-3 pt-4">
-                <button
-                  className="payment-button-sellhub w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3 px-6 rounded-lg transition-all duration-200 hover:scale-105 hover:shadow-lg flex items-center justify-center gap-2"
-                  data-tenant="zaliantservices"
-                  data-product={getSellHubData().product}
-                  data-variant={getSellHubData().variant}
+                <Button
+                  onClick={handlePurchase}
+                  disabled={isProcessing}
+                  className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-6 px-6 rounded-lg transition-all duration-200 hover:scale-105 hover:shadow-lg flex items-center justify-center gap-2"
+                  size="lg"
                 >
                   <Zap className="h-5 w-5" />
-                  Purchase Now - ${product.pricing[selectedPricing].price.toFixed(2)}
-                </button>
+                  {isProcessing ? "Processing..." : `Purchase Now - $${product.pricing[selectedPricing].price.toFixed(2)}`}
+                </Button>
                 <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground">
                   <div className="flex items-center gap-1">
                     <Download className="h-4 w-4" />
